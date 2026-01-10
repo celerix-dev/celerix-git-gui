@@ -3,6 +3,8 @@ import { onMounted, ref, watch } from "vue";
 import GitStatusBar from "@/components/GitGui/GitStatusBar.vue";
 import GitSettingsModal from "@/components/GitGui/GitSettingsModal.vue";
 import GitInitModal from "@/components/GitGui/GitInitModal.vue";
+import GitBranchModal from "@/components/GitGui/GitBranchModal.vue";
+import GitTagModal from "@/components/GitGui/GitTagModal.vue";
 import Sidebar from "@/components/GitGui/Sidebar.vue";
 import GitTabHeader from "@/components/GitGui/GitTabHeader.vue";
 import GitVerticalNav from "@/components/GitGui/GitVerticalNav.vue";
@@ -17,8 +19,16 @@ import { useGitActions } from "@/composables/useGitActions";
 import { useRepoStats } from "@/composables/useRepoStats";
 
 const showSettings = ref(false);
+const showBranchModal = ref(false);
+const showTagModal = ref(false);
+const branchModalFrom = ref('');
+const tagModalFrom = ref('');
+const modalLoading = ref(false);
+
 const recentRepos = ref<{ name: string, path: string }[]>([]);
 const homeDir = ref<string>('');
+
+const refreshCounter = ref(0);
 
 const {
   tabs,
@@ -32,6 +42,10 @@ const {
   STORAGE_KEY
 } = useRepoTabs();
 
+const triggerRefresh = () => {
+  refreshCounter.value++;
+};
+
 const {
   showInitModal,
   pendingRepoPath,
@@ -39,7 +53,13 @@ const {
   openRepo,
   initializeRepo,
   cancelInit,
-  addToRecent
+  addToRecent,
+  checkoutBranch,
+  createBranch,
+  createTag,
+  fetchRepo,
+  pullRepo,
+  pushRepo
 } = useGitActions(tabs, activeTabId, recentRepos, newTabObject, (recent) => saveState(recent), (id, recent) => setActiveTab(id, recent));
 
 const {
@@ -51,6 +71,37 @@ const {
   formattedLastCommit,
   loadRepoInfo
 } = useRepoStats(activeTab, homeDir);
+
+const refreshAll = (path: string) => {
+  loadRepoInfo(path);
+  triggerRefresh();
+};
+
+const handleCreateBranch = (data: { name: string, checkout: boolean }) => {
+  if (activeTab.value) {
+    const path = activeTab.value.path;
+    modalLoading.value = true;
+    createBranch(path, data.name, data.checkout).then(() => {
+      showBranchModal.value = false;
+      refreshAll(path);
+    }).finally(() => {
+      modalLoading.value = false;
+    });
+  }
+};
+
+const handleCreateTag = (data: { name: string, message: string }) => {
+  if (activeTab.value) {
+    const path = activeTab.value.path;
+    modalLoading.value = true;
+    createTag(path, data.name, data.message).then(() => {
+      showTagModal.value = false;
+      refreshAll(path);
+    }).finally(() => {
+      modalLoading.value = false;
+    });
+  }
+};
 
 const openInFileManager = () => {
   if (activeTab.value) {
@@ -113,11 +164,22 @@ onMounted(async () => {
            @open-repo="openRepo"
            @open-recent-repo="openRecentRepo"
            @select-vertical-tab="(tab) => setActiveVerticalTab(tab, recentRepos)"
+           @checkout-branch="(name, isRemote) => {
+             if (activeTab) {
+               const path = activeTab.path;
+               checkoutBranch(path, name, isRemote).then(() => refreshAll(path));
+             }
+           }"
+           @new-branch="(from) => { branchModalFrom = from; showBranchModal = true; }"
+           @new-tag="(from) => { tagModalFrom = from; showTagModal = true; }"
   />
 
   <div class="git-gui-container h-100 d-flex flex-column">
     <GitStatusBar
         :active-tab="activeTab"
+        @fetch="() => { if (activeTab) { const path = activeTab.path; fetchRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
+        @pull="() => { if (activeTab) { const path = activeTab.path; pullRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
+        @push="() => { if (activeTab) { const path = activeTab.path; pushRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
         class="mb-0 flex-shrink-0"
     />
 
@@ -151,12 +213,13 @@ onMounted(async () => {
         <ChangesView
             v-else-if="activeTab.activeVerticalTab === 'local-changes'"
             :repo-path="activeTab.path"
-            @refresh-stats="loadRepoInfo(activeTab.path)"
+            @refresh-stats="refreshAll(activeTab.path)"
         />
 
         <CommitView
             v-else-if="activeTab.activeVerticalTab === 'commit'"
             :repo-path="activeTab.path"
+            :refresh-counter="refreshCounter"
         />
 
         <BranchView v-else-if="activeTab.activeVerticalTab === 'placeholder1'"/>
@@ -187,6 +250,22 @@ onMounted(async () => {
       :repo-path="pendingRepoPath"
       @close="cancelInit"
       @initialize="initializeRepo"
+  />
+
+  <GitBranchModal
+      :show="showBranchModal"
+      :from-branch="branchModalFrom"
+      :loading="modalLoading"
+      @close="showBranchModal = false"
+      @create="handleCreateBranch"
+  />
+
+  <GitTagModal
+      :show="showTagModal"
+      :from-branch="tagModalFrom"
+      :loading="modalLoading"
+      @close="showTagModal = false"
+      @create="handleCreateTag"
   />
 </template>
 

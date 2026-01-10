@@ -116,6 +116,78 @@ export function useGitActions(
     pendingRepoName.value = null;
   };
 
+  const checkoutBranch = async (repoPath: string, branchName: string, isRemote: boolean) => {
+    try {
+      await App.Checkout(repoPath, branchName, isRemote);
+    } catch (err) {
+      console.error('Failed to checkout branch:', err);
+      alert('Failed to checkout branch: ' + err);
+    }
+  };
+
+  const createBranch = async (repoPath: string, name: string, checkout: boolean) => {
+    try {
+      await App.CreateBranch(repoPath, name, checkout);
+    } catch (err) {
+      console.error('Failed to create branch:', err);
+      alert('Failed to create branch: ' + err);
+    }
+  };
+
+  const createTag = async (repoPath: string, name: string, message: string) => {
+    try {
+      await App.CreateTag(repoPath, name, message);
+    } catch (err) {
+      console.error('Failed to create tag:', err);
+      alert('Failed to create tag: ' + err);
+    }
+  };
+
+  const fetchRepo = async (repoPath: string) => {
+    try {
+      await App.Fetch(repoPath);
+    } catch (err: any) {
+      console.error('Failed to fetch:', err);
+      if (err.toString().includes('SSH key not found')) {
+        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
+          return 'open-settings';
+        }
+      } else {
+        alert('Failed to fetch: ' + err);
+      }
+    }
+  };
+
+  const pullRepo = async (repoPath: string) => {
+    try {
+      await App.Pull(repoPath);
+    } catch (err: any) {
+      console.error('Failed to pull:', err);
+      if (err.toString().includes('SSH key not found')) {
+        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
+          return 'open-settings';
+        }
+      } else {
+        alert('Failed to pull: ' + err);
+      }
+    }
+  };
+
+  const pushRepo = async (repoPath: string) => {
+    try {
+      await App.Push(repoPath);
+    } catch (err: any) {
+      console.error('Failed to push:', err);
+      if (err.toString().includes('SSH key not found')) {
+        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
+          return 'open-settings';
+        }
+      } else {
+        alert('Failed to push: ' + err);
+      }
+    }
+  };
+
   return {
     showInitModal,
     pendingRepoPath,
@@ -124,6 +196,12 @@ export function useGitActions(
     openRepo,
     initializeRepo,
     cancelInit,
-    addToRecent
+    addToRecent,
+    checkoutBranch,
+    createBranch,
+    createTag,
+    fetchRepo,
+    pullRepo,
+    pushRepo
   };
 }

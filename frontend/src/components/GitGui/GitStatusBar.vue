@@ -1,10 +1,48 @@
 <script setup lang="ts">
 
+import { ref, onMounted, onUnmounted } from 'vue';
 import type {RepoTab} from "@/types/git.types";
+import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
 
 defineProps<{
   activeTab: RepoTab | null;
 }>();
+
+const emit = defineEmits<{
+  (e: 'fetch'): void;
+  (e: 'pull'): void;
+  (e: 'push'): void;
+}>();
+
+const gitStatus = ref('Ready');
+const gitPercent = ref(0);
+const isOperating = ref(false);
+
+const handleGitProgress = (data: { status: string, percent: number }) => {
+  gitStatus.value = data.status;
+  if (data.percent >= 0) {
+    gitPercent.value = data.percent;
+  }
+  isOperating.value = true;
+  
+  if (data.status.toLowerCase().includes('completed') || data.percent === 100) {
+    setTimeout(() => {
+      if (gitStatus.value === data.status) {
+        gitStatus.value = 'Ready';
+        gitPercent.value = 0;
+        isOperating.value = false;
+      }
+    }, 3000);
+  }
+};
+
+onMounted(() => {
+  EventsOn('git-progress', handleGitProgress);
+});
+
+onUnmounted(() => {
+  EventsOff('git-progress');
+});
 
 </script>
 
@@ -13,15 +51,15 @@ defineProps<{
     <!-- Left: Action Buttons -->
     <div class="d-flex align-items-center gap-2 z-1">
       <div class="btn-group">
-        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab">
+        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab" @click="emit('fetch')">
           <i class="ti ti-refresh fs-4"></i>
           <span class="x-small">Fetch</span>
         </button>
-        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab">
+        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab" @click="emit('pull')">
           <i class="ti ti-download fs-4"></i>
           <span class="x-small">Pull</span>
         </button>
-        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab">
+        <button class="btn btn-sm btn-ghost d-flex flex-column align-items-center gap-1 px-3" :disabled="!activeTab" @click="emit('push')">
           <i class="ti ti-upload fs-4"></i>
           <span class="x-small">Push</span>
         </button>
@@ -49,11 +87,16 @@ defineProps<{
     <div class="status-window d-flex flex-column justify-content-center border rounded bg-body-tertiary px-3 position-absolute start-50 translate-middle-x overflow-hidden" 
          style="width: 500px; height: 50px;">
       <div class="d-flex justify-content-between align-items-center small">
-        <span class="text-truncate">{{ activeTab ? 'Ready' : 'No repository selected' }}</span>
+        <span class="text-truncate" :title="gitStatus">{{ activeTab ? gitStatus : 'No repository selected' }}</span>
         <span class="text-muted" v-if="activeTab">{{ activeTab.name }}</span>
       </div>
-      <div class="progress position-absolute bottom-0 start-0 w-100 rounded-0" style="height: 4px;" v-if="activeTab">
-        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+      <div class="progress position-absolute bottom-0 start-0 w-100 rounded-0" style="height: 4px;" v-if="activeTab && (isOperating || gitPercent > 0)">
+        <div 
+          class="progress-bar progress-bar-striped progress-bar-animated" 
+          role="progressbar" 
+          :style="{ width: (gitPercent > 0 ? gitPercent : 100) + '%' }"
+          :class="{ 'bg-success': gitStatus.includes('completed') }"
+        ></div>
       </div>
     </div>
 

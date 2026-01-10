@@ -12,7 +12,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/sergi/go-diff/diffmatchpatch"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -357,7 +359,7 @@ func (a *App) UnstageFile(repoPath string, filePath string) error {
 
 	return w.Reset(&git.ResetOptions{
 		Commit: head.Hash(),
-		Files:  []string{filePath},
+		Mode:   git.MixedReset,
 	})
 }
 
@@ -545,23 +547,40 @@ func (a *App) GetCommitHistory(repoPath string, count int) ([]GitCommit, error) 
 	refs, _ := r.References()
 	if refs != nil {
 		_ = refs.ForEach(func(ref *plumbing.Reference) error {
-			if ref.Type() == plumbing.HashReference || ref.Type() == plumbing.SymbolicReference {
-				hash := ref.Hash()
-				// For symbolic refs (like HEAD), resolve to actual hash
-				if ref.Type() == plumbing.SymbolicReference {
-					resolved, err := r.Reference(ref.Target(), true)
+			hash := ref.Hash()
+			// For symbolic refs (like HEAD), resolve to actual hash
+			if ref.Type() == plumbing.SymbolicReference {
+				resolved, err := r.Reference(ref.Target(), true)
+				if err == nil {
+					hash = resolved.Hash()
+				}
+			}
+
+			// If it's a tag, it might be an annotated tag.
+			// We need to resolve it to the commit hash it points to.
+			if ref.Name().IsTag() {
+				tagObj, err := r.TagObject(hash)
+				if err == nil {
+					// It's an annotated tag
+					commit, err := tagObj.Commit()
 					if err == nil {
-						hash = resolved.Hash()
+						hash = commit.Hash
 					}
 				}
-				name := ref.Name().Short()
-				refMap[hash] = append(refMap[hash], name)
+				// If r.TagObject fails, it's likely a lightweight tag,
+				// and hash already points to the commit.
 			}
+
+			name := ref.Name().Short()
+			refMap[hash] = append(refMap[hash], name)
 			return nil
 		})
 	}
 
-	cIter, err := r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
+	cIter, err := r.Log(&git.LogOptions{
+		Order: git.LogOrderCommitterTime,
+		All:   true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -633,6 +652,310 @@ func (a *App) Commit(repoPath string, subject string, body string, amend bool) e
 
 	_, err = w.Commit(msg, opts)
 	return err
+}
+
+func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+
+	var branch plumbing.ReferenceName
+	if isRemote {
+		// If it's a remote branch, we usually want to create a local tracking branch
+		// Extract local branch name from remote branch name (e.g., origin/main -> main)
+		parts := strings.Split(branchName, "/")
+		localName := branchName
+		if len(parts) > 1 {
+			localName = strings.Join(parts[1:], "/")
+		}
+
+		branch = plumbing.NewBranchReferenceName(localName)
+
+		// Check if local branch already exists
+		_, err = r.Reference(branch, true)
+		if err != nil {
+			// Local branch does not exist, create it tracking the remote
+			// To create a local branch tracking a remote one with go-git:
+			// 1. Get the remote reference hash
+			remoteBranch := plumbing.NewRemoteReferenceName(parts[0], strings.Join(parts[1:], "/"))
+			remoteRef, err := r.Reference(remoteBranch, true)
+			if err != nil {
+				return err
+			}
+
+			return w.Checkout(&git.CheckoutOptions{
+				Branch: branch,
+				Create: true,
+				Hash:   remoteRef.Hash(),
+			})
+		}
+	} else {
+		branch = plumbing.NewBranchReferenceName(branchName)
+	}
+
+	return w.Checkout(&git.CheckoutOptions{
+		Branch: branch,
+	})
+}
+
+func (a *App) CreateBranch(repoPath string, name string, checkout bool) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	head, err := r.Head()
+	if err != nil {
+		return err
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+
+	branchName := plumbing.NewBranchReferenceName(name)
+
+	// Create the branch
+	if checkout {
+		err = w.Checkout(&git.CheckoutOptions{
+			Branch: branchName,
+			Create: true,
+			Hash:   head.Hash(),
+		})
+	} else {
+		ref := plumbing.NewHashReference(branchName, head.Hash())
+		err = r.Storer.SetReference(ref)
+	}
+
+	return err
+}
+
+func (a *App) CreateTag(repoPath string, name string, message string) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	head, err := r.Head()
+	if err != nil {
+		return err
+	}
+
+	opts := &git.CreateTagOptions{
+		Message: message,
+	}
+
+	if message != "" {
+		// Annotated tag
+		// We need a signature for annotated tags
+		opts.Tagger = &object.Signature{
+			Name:  "Celerix Git GUI",
+			Email: "gui@celerix.dev",
+			When:  time.Now(),
+		}
+	}
+
+	_, err = r.CreateTag(name, head.Hash(), opts)
+	return err
+}
+
+func (a *App) getAuth(remoteURL string) (ssh.AuthMethod, error) {
+	if !strings.HasPrefix(remoteURL, "git@") && !strings.HasPrefix(remoteURL, "ssh://") {
+		return nil, nil // Use default (likely HTTP without auth or handled by git-agent)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	sshPath := filepath.Join(home, ".ssh", "id_ed25519")
+	if _, err := os.Stat(sshPath); os.IsNotExist(err) {
+		sshPath = filepath.Join(home, ".ssh", "id_rsa")
+	}
+
+	if _, err := os.Stat(sshPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SSH key not found")
+	}
+
+	return ssh.NewPublicKeysFromFile("git", sshPath, "")
+}
+
+type GitProgress struct {
+	Status  string `json:"status"`
+	Percent int    `json:"percent"`
+}
+
+type gitProgressProxy struct {
+	a      *App
+	status string
+}
+
+func (p *gitProgressProxy) Write(data []byte) (n int, err error) {
+	msg := string(data)
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return len(data), nil
+	}
+
+	// Simple parser for git progress output
+	// Example: Enumerating objects: 5, done.
+	// Example: Counting objects: 100% (5/5), done.
+	// Example: Compressing objects: 100% (3/3), done.
+	// Example: Receiving objects: 100% (5/5), 1.02 KiB | 1.02 MiB/s, done.
+
+	percent := -1
+	if strings.Contains(msg, "%") {
+		parts := strings.Split(msg, "%")
+		if len(parts) > 0 {
+			subParts := strings.Fields(parts[0])
+			if len(subParts) > 0 {
+				fmt.Sscanf(subParts[len(subParts)-1], "%d", &percent)
+			}
+		}
+	}
+
+	runtime.EventsEmit(p.a.ctx, "git-progress", GitProgress{
+		Status:  msg,
+		Percent: percent,
+	})
+
+	return len(data), nil
+}
+
+func (a *App) Fetch(repoPath string) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return err
+	}
+
+	auth, _ := a.getAuth(remote.Config().URLs[0])
+
+	progress := &gitProgressProxy{a: a, status: "Fetching origin..."}
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Fetching origin...",
+		Percent: 0,
+	})
+
+	err = r.Fetch(&git.FetchOptions{
+		RemoteName: "origin",
+		Auth:       auth,
+		Progress:   progress,
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		// Emit error status if it failed
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Fetch failed: %v", err),
+			Percent: -1,
+		})
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Fetch completed",
+		Percent: 100,
+	})
+
+	return nil
+}
+
+func (a *App) Pull(repoPath string) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return err
+	}
+
+	auth, _ := a.getAuth(remote.Config().URLs[0])
+
+	progress := &gitProgressProxy{a: a, status: "Pulling origin..."}
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Pulling origin...",
+		Percent: 0,
+	})
+
+	err = w.Pull(&git.PullOptions{
+		RemoteName: "origin",
+		Auth:       auth,
+		Progress:   progress,
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		// Emit error status if it failed
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Pull failed: %v", err),
+			Percent: -1,
+		})
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Pull completed",
+		Percent: 100,
+	})
+
+	return nil
+}
+
+func (a *App) Push(repoPath string) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return err
+	}
+
+	auth, _ := a.getAuth(remote.Config().URLs[0])
+
+	progress := &gitProgressProxy{a: a, status: "Pushing to origin..."}
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Pushing to origin...",
+		Percent: 0,
+	})
+
+	err = r.Push(&git.PushOptions{
+		RemoteName: "origin",
+		Auth:       auth,
+		Progress:   progress,
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		// Emit error status if it failed
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Push failed: %v", err),
+			Percent: -1,
+		})
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Push completed",
+		Percent: 100,
+	})
+
+	return nil
 }
 
 func (a *App) generateSimpleDiff(old, new, path string) string {
