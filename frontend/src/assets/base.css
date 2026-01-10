@@ -39,6 +39,12 @@ body {
     user-select: text;
 }
 
+body.resizing * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    cursor: row-resize !important;
+}
+
 input {
     border-radius: 3px !important;
     padding: 6px !important;

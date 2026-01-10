@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import type {RepoTab} from "@/components/GitGui/types";
+import type {RepoTab} from "@/types/git.types";
 
 defineProps<{
   activeTab: RepoTab | null;
