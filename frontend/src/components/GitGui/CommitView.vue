@@ -112,7 +112,7 @@ watch(() => props.refreshCounter, () => {
             <GitGraph :commits="commits" :row-height="38" />
           </div>
 
-          <table class="table table-hover table-sm mb-0 position-relative" style="background: transparent;">
+          <table class="table table-hover table-sm mb-0 position-relative" style="background: transparent;z-index:0">
             <thead>
               <tr class="small bg-body-tertiary">
                 <th class="ps-3 border-bottom-0 fw-normal text-muted" style="width: 120px;">Graph</th>
@@ -209,7 +209,6 @@ watch(() => props.refreshCounter, () => {
 
 .graph-layer {
     pointer-events: none;
-    z-index: 2;
     margin-top: 38px; /* Height of the table header */
 }
 
