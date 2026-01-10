@@ -83,6 +83,12 @@ const getRefClass = (ref: string) => {
   return 'bg-warning-subtle text-warning-emphasis border border-warning';
 };
 
+const getRefIcon = (ref: string) => {
+  if (ref.includes('/') || ref === 'main' || ref === 'master' || ref === 'develop') return 'ti ti-git-branch';
+  if (ref.startsWith('v')) return 'ti ti-tag';
+  return 'ti ti-git-commit';
+}
+
 onMounted(() => {
   loadCommits();
 });
@@ -128,7 +134,7 @@ watch(() => props.refreshCounter, () => {
                   :class="['cursor-pointer align-middle', { 'table-active': selectedCommit?.hash === commit.hash }]"
                   @click="selectCommit(commit)"
               >
-                <td class="ps-3">
+                <td class="ps-3" style="border-bottom:0">
                    <!-- Graph spacing -->
                 </td>
                 <td><code class="small">{{ commit.hash.substring(0, 7) }}</code></td>
@@ -136,8 +142,8 @@ watch(() => props.refreshCounter, () => {
                   <span class="fw-medium">{{ commit.subject }}</span>
                   <span v-if="commit.refs && commit.refs.length" class="ms-2">
                     <span v-for="ref in commit.refs.filter(r => r !== 'HEAD' && !r.endsWith('/HEAD'))" :key="ref" 
-                          :class="['badge rounded-pill me-1', getRefClass(ref)]">
-                      {{ ref }}
+                          :class="['badge me-1 border-1', getRefClass(ref)]" style="border-radius:5px;">
+                      <i :class="['ti', getRefIcon(ref),'pe-1']"></i>{{ ref }}
                     </span>
                   </span>
                 </td>
