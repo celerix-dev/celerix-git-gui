@@ -8,6 +8,7 @@ import GitGraph from "./GitGraph.vue";
 
 const props = defineProps<{
   repoPath: string;
+  refreshCounter?: number;
 }>();
 
 const commits = ref<GitCommit[]>([]);
@@ -90,6 +91,10 @@ watch(() => props.repoPath, () => {
   selectedCommit.value = null;
   loadCommits();
 });
+
+watch(() => props.refreshCounter, () => {
+  loadCommits();
+});
 </script>
 
 <template>
@@ -130,7 +135,7 @@ watch(() => props.repoPath, () => {
                 <td class="text-truncate" style="max-width: 0;">
                   <span class="fw-medium">{{ commit.subject }}</span>
                   <span v-if="commit.refs && commit.refs.length" class="ms-2">
-                    <span v-for="ref in commit.refs" :key="ref" 
+                    <span v-for="ref in commit.refs.filter(r => r !== 'HEAD' && !r.endsWith('/HEAD'))" :key="ref" 
                           :class="['badge rounded-pill me-1', getRefClass(ref)]">
                       {{ ref }}
                     </span>
