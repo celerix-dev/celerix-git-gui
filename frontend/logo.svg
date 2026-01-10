@@ -1,0 +1,31 @@
+<svg width="400" height="400" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="fullGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f85d41" />
+            <stop offset="100%" stop-color="#b124ab" />
+        </linearGradient>
+
+        <mask id="logoMask">
+            <g fill="none" stroke="#ffffff" stroke-linecap="square" stroke-linejoin="miter">
+                <g stroke-width="8">
+                    <circle cx="100" cy="100" r="85" />
+                    <path d="M 154.5,90 A 58,58 0 1,0 154.7,110" />
+                    <path d="M 126.3,90 A 28,28 0 1,0 126.3,110" />
+                    <line x1="128.0" y1="91" x2="184" y2="91" />
+                    <line x1="128.5" y1="109.2" x2="154.4" y2="109.2" />
+                </g>
+                <g transform="translate(100,100)" stroke-width="5">
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(0)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(50)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(-90)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(130)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(180)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(230)" />
+                    <line x1="0" y1="-28" x2="0" y2="-55" transform="rotate(310)" />
+                </g>
+            </g>
+        </mask>
+    </defs>
+
+    <rect x="0" y="0" width="200" height="200" fill="url(#fullGrad)" mask="url(#logoMask)" />
+</svg>
