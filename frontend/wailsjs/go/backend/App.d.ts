@@ -10,6 +10,8 @@ export function CreateBranch(arg1:string,arg2:string,arg3:boolean):Promise<void>
 
 export function CreateTag(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function DeleteBranch(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function Fetch(arg1:string):Promise<void>;
 
 export function GenerateSshKey():Promise<backend.SshKeyInfo>;

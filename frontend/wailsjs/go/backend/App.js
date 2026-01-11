@@ -18,6 +18,10 @@ export function CreateTag(arg1, arg2, arg3) {
   return window['go']['backend']['App']['CreateTag'](arg1, arg2, arg3);
 }
 
+export function DeleteBranch(arg1, arg2, arg3) {
+  return window['go']['backend']['App']['DeleteBranch'](arg1, arg2, arg3);
+}
+
 export function Fetch(arg1) {
   return window['go']['backend']['App']['Fetch'](arg1);
 }

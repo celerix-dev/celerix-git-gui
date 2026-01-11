@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
@@ -926,6 +927,48 @@ func (a *App) CreateBranch(repoPath string, name string, checkout bool) error {
 	}
 
 	return err
+}
+
+func (a *App) DeleteBranch(repoPath string, branchName string, deleteRemote bool) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+
+	// Delete local branch
+	err = r.Storer.RemoveReference(plumbing.NewBranchReferenceName(branchName))
+	if err != nil {
+		return err
+	}
+
+	if deleteRemote {
+		// This is more complex as it requires authentication and pushing to the remote
+		// For now, let's try to delete it from 'origin'
+		remote, err := r.Remote("origin")
+		if err != nil {
+			return err
+		}
+
+		auth, _ := a.getAuth(remote.Config().URLs[0])
+
+		// To delete a remote branch, we push an empty reference to it
+		// RefSpec: :refs/heads/branchName
+		refSpec := fmt.Sprintf(":refs/heads/%s", branchName)
+		err = r.Push(&git.PushOptions{
+			RemoteName: "origin",
+			RefSpecs:   []config.RefSpec{config.RefSpec(refSpec)},
+			Auth:       auth,
+		})
+		if err != nil && err != git.NoErrAlreadyUpToDate {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (a *App) CreateTag(repoPath string, name string, message string) error {

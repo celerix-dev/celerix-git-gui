@@ -5,6 +5,7 @@ import GitSettingsModal from "@/components/GitGui/Modals/GitSettingsModal.vue";
 import GitInitModal from "@/components/GitGui/Modals/GitInitModal.vue";
 import GitBranchModal from "@/components/GitGui/Modals/GitBranchModal.vue";
 import GitTagModal from "@/components/GitGui/Modals/GitTagModal.vue";
+import DeleteBranchModal from "@/components/GitGui/Modals/DeleteBranchModal.vue";
 import Sidebar from "@/components/GitGui/Navigation/Sidebar.vue";
 import GitTabHeader from "@/components/GitGui/Navigation/GitTabHeader.vue";
 import GitVerticalNav from "@/components/GitGui/Navigation/GitVerticalNav.vue";
@@ -21,8 +22,10 @@ import { useRepoStats } from "@/composables/useRepoStats";
 const showSettings = ref(false);
 const showBranchModal = ref(false);
 const showTagModal = ref(false);
+const showDeleteBranchModal = ref(false);
 const branchModalFrom = ref('');
 const tagModalFrom = ref('');
+const deleteBranchName = ref('');
 const modalLoading = ref(false);
 
 const recentRepos = ref<{ name: string, path: string }[]>([]);
@@ -103,6 +106,22 @@ const handleCreateTag = (data: { name: string, message: string }) => {
   }
 };
 
+const handleDeleteBranch = (data: { branchName: string, deleteRemote: boolean }) => {
+  if (activeTab.value) {
+    const path = activeTab.value.path;
+    modalLoading.value = true;
+    App.DeleteBranch(path, data.branchName, data.deleteRemote).then(() => {
+      showDeleteBranchModal.value = false;
+      refreshAll(path);
+    }).catch(err => {
+      console.error('Failed to delete branch:', err);
+      // Maybe show an alert or toast here if available
+    }).finally(() => {
+      modalLoading.value = false;
+    });
+  }
+};
+
 const openInFileManager = () => {
   if (activeTab.value) {
     App.OpenInFileManager(activeTab.value.path);
@@ -172,6 +191,7 @@ onMounted(async () => {
            }"
            @new-branch="(from) => { branchModalFrom = from; showBranchModal = true; }"
            @new-tag="(from) => { tagModalFrom = from; showTagModal = true; }"
+           @delete-branch="(name) => { deleteBranchName = name; showDeleteBranchModal = true; }"
   />
 
   <div class="git-gui-container h-100 d-flex flex-column">
@@ -266,6 +286,14 @@ onMounted(async () => {
       :loading="modalLoading"
       @close="showTagModal = false"
       @create="handleCreateTag"
+  />
+
+  <DeleteBranchModal
+      :show="showDeleteBranchModal"
+      :branch-name="deleteBranchName"
+      :loading="modalLoading"
+      @close="showDeleteBranchModal = false"
+      @delete="handleDeleteBranch"
   />
 </template>
 

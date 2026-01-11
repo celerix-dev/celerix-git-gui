@@ -19,6 +19,7 @@ const emit = defineEmits<{
   (e: 'checkoutBranch', branchName: string, isRemote: boolean): void;
   (e: 'newBranch', fromBranch: string): void;
   (e: 'newTag', fromBranch: string): void;
+  (e: 'deleteBranch', branchName: string): void;
 }>();
 
 interface BranchNode {
@@ -461,6 +462,13 @@ export default {
     <a class="dropdown-item d-flex align-items-center py-2" href="javascript:void(0);" @click="emit('newTag', contextMenu.branchName); contextMenu.show = false;">
       <i class="ti ti-tag me-2"></i>
       <span>New tag...</span>
+    </a>
+    <div class="dropdown-divider my-1"></div>
+    <a :class="['dropdown-item d-flex align-items-center py-2 text-danger', { 'disabled opacity-50': contextMenu.branchName === props.currentRepoStats?.currentBranch && !contextMenu.isRemote }]" 
+       href="javascript:void(0);" 
+       @click="contextMenu.branchName === props.currentRepoStats?.currentBranch && !contextMenu.isRemote ? null : (emit('deleteBranch', contextMenu.branchName), contextMenu.show = false)">
+      <i class="ti ti-trash me-2"></i>
+      <span>Delete branch...</span>
     </a>
   </div>
 </template>
