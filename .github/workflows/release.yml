@@ -50,10 +50,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build Wails App
-        run: |
-          wails build -platform ${{ matrix.platform }} \
-          -clean \
-          -ldflags "-X main.Version=${{ github.ref_name }}"
+        run: wails build -platform ${{ matrix.platform }} -clean -ldflags "-X main.Version=${{ github.ref_name }}"
 
       # Compression/Artifact handling
       - name: Package (Windows)
