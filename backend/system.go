@@ -45,7 +45,7 @@ func (a *App) OpenInFileManager(path string) error {
 		cmd = exec.Command("open", "--", absPath)
 	case "windows":
 		// On Windows, 'explorer' opens the folder.
-		// explorer.exe doesn't support -- but it's less prone to flag injection via path.
+		// explorer.exe doesn't support -- but it's less prone to flag injection via a path.
 		cmd = exec.Command("explorer", absPath)
 	case "linux":
 		// On Linux, xdg-open uses the default file manager. Use -- to prevent flag injection.

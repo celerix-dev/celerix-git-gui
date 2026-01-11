@@ -37,13 +37,14 @@ func main() {
 			app,
 		},
 		Windows: &windows.Options{
-			// This forces the window to use your icon even in dev
 			WindowIsTranslucent: true,
 		},
 		Mac: &mac.Options{
+			WindowIsTranslucent: true,
 			About: &mac.AboutInfo{
-				Title: "Celerix GIT",
-				Icon:  icon,
+				Title:   "Celerix GIT",
+				Message: "version: " + Version,
+				Icon:    icon,
 			},
 		},
 	})

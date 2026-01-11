@@ -36,7 +36,7 @@ func (a *App) GetSshKeyInfo() (SshKeyInfo, error) {
 			info.PublicKey = string(pubData)
 		}
 	} else {
-		// Try RSA as fallback for info
+		// Try RSA as a fallback for info
 		rsaPath := filepath.Join(sshDir, "id_rsa")
 		if _, err := os.Stat(rsaPath); err == nil {
 			info.HasKey = true

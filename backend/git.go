@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"sync"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -21,7 +23,6 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
-	"sync"
 )
 
 var repoMutexes sync.Map
@@ -200,7 +201,7 @@ func (a *App) GetRepoStats(path string) (*RepoStats, error) {
 	}
 
 	// 9. Stashes
-	stashRef, err := r.Storer.Reference(plumbing.ReferenceName("refs/stash"))
+	stashRef, err := r.Storer.Reference("refs/stash")
 	if err == nil {
 		stashCommit, err := r.CommitObject(stashRef.Hash())
 		if err == nil {
@@ -408,8 +409,8 @@ func (a *App) UnstageAll(repoPath string) error {
 	if err != nil {
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
 			// If no HEAD, maybe we can't reset?
-			// In git CLI "git reset" on initial repo works.
-			// go-git Reset requires a commit hash usually.
+			// In git CLI "git reset" on the initial repo works.
+			// go-git Reset usually requires a commit hash.
 			return fmt.Errorf("cannot unstage all: no HEAD reference found")
 		}
 		return err
@@ -449,14 +450,14 @@ func (a *App) GetFileDiff(repoPath string, filePath string, staged bool) (string
 			return "", headErr
 		}
 
-		// For staged, we want to see what's in the index vs what was in HEAD
+		// For staged, we want to see what's in the index vs. what was in HEAD
 		// This is actually what 'git diff --cached' does.
 		return a.getUnifiedDiff(r, fromTree, filePath, true)
-	} else {
-		// Unstaged: Diff between Index and Worktree
-		// This is what 'git diff' does.
-		return a.getUnifiedDiff(r, nil, filePath, false)
 	}
+
+	// Unstaged: Diff between Index and Worktree
+	// This is what 'git diff' does.
+	return a.getUnifiedDiff(r, nil, filePath, false)
 }
 
 func (a *App) getUnifiedDiff(r *git.Repository, headTree *object.Tree, filePath string, staged bool) (string, error) {
@@ -535,7 +536,7 @@ func (a *App) getUnifiedDiff(r *git.Repository, headTree *object.Tree, filePath 
 			}
 		}
 
-		// If not in index (e.g. newly tracked but not yet in a commit? no, if it's in index it's in index)
+		// If not in index (e.g., newly tracked but not yet in a commit? no, if it's in index, it's in index)
 		// If it's a new file, oldContent will be empty, which is correct.
 	}
 
@@ -545,7 +546,7 @@ func (a *App) getUnifiedDiff(r *git.Repository, headTree *object.Tree, filePath 
 		return "Binary file or empty", nil
 	}
 
-	return a.generateSimpleDiff(oldContent, newContent, filePath), nil
+	return a.generateSimpleDiff(oldContent, newContent), nil
 }
 
 func (a *App) GetBranches(repoPath string) ([]string, error) {
@@ -767,7 +768,7 @@ func (a *App) GetCommitFileDiff(repoPath string, commitHash string, filePath str
 	var oldContent string
 	var newContent string
 
-	// New content from current commit
+	// New content from the current commit
 	entry, err := currentTree.File(filePath)
 	if err == nil {
 		newContent, _ = entry.Contents()
@@ -781,7 +782,7 @@ func (a *App) GetCommitFileDiff(repoPath string, commitHash string, filePath str
 		}
 	}
 
-	return a.generateSimpleDiff(oldContent, newContent, filePath), nil
+	return a.generateSimpleDiff(oldContent, newContent), nil
 }
 
 func (a *App) Commit(repoPath string, subject string, body string, amend bool) error {
@@ -856,7 +857,7 @@ func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error 
 	var branch plumbing.ReferenceName
 	if isRemote {
 		// If it's a remote branch, we usually want to create a local tracking branch
-		// Extract local branch name from remote branch name (e.g., origin/main -> main)
+		// Extract local branch name from the remote branch name (e.g., origin/main -> main)
 		parts := strings.Split(branchName, "/")
 		localName := branchName
 		if len(parts) > 1 {
@@ -865,7 +866,7 @@ func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error 
 
 		branch = plumbing.NewBranchReferenceName(localName)
 
-		// Check if local branch already exists
+		// Check if a local branch already exists
 		_, err = r.Reference(branch, true)
 		if err != nil {
 			// Local branch does not exist, create it tracking the remote
@@ -956,14 +957,14 @@ func (a *App) DeleteBranch(repoPath string, branchName string, deleteRemote bool
 		auth, _ := a.getAuth(remote.Config().URLs[0])
 
 		// To delete a remote branch, we push an empty reference to it
-		// RefSpec: :refs/heads/branchName
+		// RefSpec: refs/heads/branchName
 		refSpec := fmt.Sprintf(":refs/heads/%s", branchName)
 		err = r.Push(&git.PushOptions{
 			RemoteName: "origin",
 			RefSpecs:   []config.RefSpec{config.RefSpec(refSpec)},
 			Auth:       auth,
 		})
-		if err != nil && err != git.NoErrAlreadyUpToDate {
+		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return err
 		}
 	}
@@ -1055,7 +1056,10 @@ func (p *gitProgressProxy) Write(data []byte) (n int, err error) {
 		if len(parts) > 0 {
 			subParts := strings.Fields(parts[0])
 			if len(subParts) > 0 {
-				fmt.Sscanf(subParts[len(subParts)-1], "%d", &percent)
+				_, err := fmt.Sscanf(subParts[len(subParts)-1], "%d", &percent)
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
 	}
@@ -1096,7 +1100,7 @@ func (a *App) Fetch(repoPath string) error {
 		Auth:       auth,
 		Progress:   progress,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		// Emit error status if it failed
 		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
 			Status:  fmt.Sprintf("Fetch failed: %v", err),
@@ -1146,7 +1150,7 @@ func (a *App) Pull(repoPath string) error {
 		Auth:       auth,
 		Progress:   progress,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		// Emit error status if it failed
 		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
 			Status:  fmt.Sprintf("Pull failed: %v", err),
@@ -1191,7 +1195,7 @@ func (a *App) Push(repoPath string) error {
 		Auth:       auth,
 		Progress:   progress,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		// Emit error status if it failed
 		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
 			Status:  fmt.Sprintf("Push failed: %v", err),
@@ -1208,7 +1212,7 @@ func (a *App) Push(repoPath string) error {
 	return nil
 }
 
-func (a *App) generateSimpleDiff(old, new, path string) string {
+func (a *App) generateSimpleDiff(old, new string) string {
 	dmp := diffmatchpatch.New()
 
 	// Character-based diff is default, but for unified diff we usually want line-based.
