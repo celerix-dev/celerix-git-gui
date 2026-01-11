@@ -2,7 +2,7 @@
 
 import { ref, computed } from 'vue';
 import type { RepoTab } from "@/types/git.types";
-import { backend } from "../../../wailsjs/go/models";
+import { backend } from "../../../../wailsjs/go/models";
 import RepoStats = backend.RepoStats;
 
 const props = defineProps<{

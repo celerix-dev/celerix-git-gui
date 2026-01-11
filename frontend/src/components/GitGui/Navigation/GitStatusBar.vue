@@ -2,7 +2,7 @@
 
 import { ref, onMounted, onUnmounted } from 'vue';
 import type {RepoTab} from "@/types/git.types";
-import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
+import { EventsOn, EventsOff } from "../../../../wailsjs/runtime/runtime";
 
 defineProps<{
   activeTab: RepoTab | null;

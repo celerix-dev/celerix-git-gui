@@ -16,6 +16,10 @@ export function GenerateSshKey():Promise<backend.SshKeyInfo>;
 
 export function GetBranches(arg1:string):Promise<Array<string>>;
 
+export function GetCommitChanges(arg1:string,arg2:string):Promise<Array<backend.CommitFileChange>>;
+
+export function GetCommitFileDiff(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GetCommitHistory(arg1:string,arg2:number):Promise<Array<backend.GitCommit>>;
 
 export function GetFileDiff(arg1:string,arg2:string,arg3:boolean):Promise<string>;

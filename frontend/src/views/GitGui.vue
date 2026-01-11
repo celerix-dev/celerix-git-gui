@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import GitStatusBar from "@/components/GitGui/GitStatusBar.vue";
-import GitSettingsModal from "@/components/GitGui/GitSettingsModal.vue";
-import GitInitModal from "@/components/GitGui/GitInitModal.vue";
-import GitBranchModal from "@/components/GitGui/GitBranchModal.vue";
-import GitTagModal from "@/components/GitGui/GitTagModal.vue";
-import Sidebar from "@/components/GitGui/Sidebar.vue";
-import GitTabHeader from "@/components/GitGui/GitTabHeader.vue";
-import GitVerticalNav from "@/components/GitGui/GitVerticalNav.vue";
-import RepoInfoView from "@/components/GitGui/RepoInfoView.vue";
-import ChangesView from "@/components/GitGui/ChangesView.vue";
-import CommitView from "@/components/GitGui/CommitView.vue";
-import BranchView from "@/components/GitGui/BranchView.vue";
+import GitStatusBar from "@/components/GitGui/Navigation/GitStatusBar.vue";
+import GitSettingsModal from "@/components/GitGui/Modals/GitSettingsModal.vue";
+import GitInitModal from "@/components/GitGui/Modals/GitInitModal.vue";
+import GitBranchModal from "@/components/GitGui/Modals/GitBranchModal.vue";
+import GitTagModal from "@/components/GitGui/Modals/GitTagModal.vue";
+import Sidebar from "@/components/GitGui/Navigation/Sidebar.vue";
+import GitTabHeader from "@/components/GitGui/Navigation/GitTabHeader.vue";
+import GitVerticalNav from "@/components/GitGui/Navigation/GitVerticalNav.vue";
+import RepoInfoView from "@/components/GitGui/RepoInfoView/RepoInfoView.vue";
+import ChangesView from "@/components/GitGui/ChangesView/ChangesView.vue";
+import CommitView from "@/components/GitGui/CommitView/CommitView.vue";
+import BranchView from "@/components/GitGui/BranchView/BranchView.vue";
 
 import * as App from "../../wailsjs/go/backend/App";
 import { useRepoTabs } from "@/composables/useRepoTabs";

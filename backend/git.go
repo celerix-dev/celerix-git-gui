@@ -13,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/go-git/go-git/v5/utils/merkletrie"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/yuin/goldmark"
@@ -67,6 +68,11 @@ type GitCommit struct {
 	Refs         []string  `json:"refs"`
 }
 
+type CommitFileChange struct {
+	Path   string `json:"path"`
+	Status string `json:"status"` // A, M, D
+}
+
 func (a *App) GitInit(path string) error {
 	_, err := git.PlainInit(path, false)
 	return err
@@ -98,11 +104,14 @@ func (a *App) GetRepoStats(path string) (*RepoStats, error) {
 		RepoName: filepath.Base(path),
 	}
 
-	indexPath := filepath.Join(path, ".git", "index")
-	info, err := os.Stat(indexPath)
-	if err == nil {
-		stats.SizeMB = float64(info.Size()) / 1024 / 1024
+	// 2. Get Repo Size (Total .git folder size)
+	dotGitPath := filepath.Join(path, ".git")
+	if isBare, _ := r.Config(); isBare != nil && isBare.Core.IsBare {
+		dotGitPath = path
 	}
+
+	size, _ := a.dirSize(dotGitPath)
+	stats.SizeMB = float64(size) / 1024 / 1024
 
 	// 3. Get Remote URL
 	if remotes, err := r.Remotes(); err == nil && len(remotes) > 0 {
@@ -663,6 +672,117 @@ func (a *App) GetCommitHistory(repoPath string, count int) ([]GitCommit, error) 
 	return commits, nil
 }
 
+func (a *App) GetCommitChanges(repoPath string, commitHash string) ([]CommitFileChange, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	h := plumbing.NewHash(commitHash)
+	commit, err := r.CommitObject(h)
+	if err != nil {
+		return nil, err
+	}
+
+	currentTree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	var prevTree *object.Tree
+	if commit.NumParents() > 0 {
+		parent, err := commit.Parent(0)
+		if err == nil {
+			prevTree, _ = parent.Tree()
+		}
+	}
+
+	changes, err := object.DiffTree(prevTree, currentTree)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []CommitFileChange
+	for _, ch := range changes {
+		action, err := ch.Action()
+		if err != nil {
+			continue
+		}
+
+		status := "M"
+		path := ch.To.Name
+		switch action {
+		case merkletrie.Insert:
+			status = "A"
+		case merkletrie.Delete:
+			status = "D"
+			path = ch.From.Name
+		case merkletrie.Modify:
+			status = "M"
+		}
+
+		result = append(result, CommitFileChange{
+			Path:   path,
+			Status: status,
+		})
+	}
+
+	return result, nil
+}
+
+func (a *App) GetCommitFileDiff(repoPath string, commitHash string, filePath string) (string, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return "", err
+	}
+
+	h := plumbing.NewHash(commitHash)
+	commit, err := r.CommitObject(h)
+	if err != nil {
+		return "", err
+	}
+
+	currentTree, err := commit.Tree()
+	if err != nil {
+		return "", err
+	}
+
+	var prevTree *object.Tree
+	if commit.NumParents() > 0 {
+		parent, err := commit.Parent(0)
+		if err == nil {
+			prevTree, _ = parent.Tree()
+		}
+	}
+
+	var oldContent string
+	var newContent string
+
+	// New content from current commit
+	entry, err := currentTree.File(filePath)
+	if err == nil {
+		newContent, _ = entry.Contents()
+	}
+
+	// Old content from parent commit
+	if prevTree != nil {
+		entry, err := prevTree.File(filePath)
+		if err == nil {
+			oldContent, _ = entry.Contents()
+		}
+	}
+
+	return a.generateSimpleDiff(oldContent, newContent, filePath), nil
+}
+
 func (a *App) Commit(repoPath string, subject string, body string, amend bool) error {
 	mu := getRepoMutex(repoPath)
 	mu.Lock()
@@ -1121,4 +1241,18 @@ func (a *App) generateSimpleDiff(old, new, path string) string {
 	}
 
 	return result.String()
+}
+
+func (a *App) dirSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
 }

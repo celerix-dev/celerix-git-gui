@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import * as App from '../../../wailsjs/go/backend/App';
+import * as App from '../../../../wailsjs/go/backend/App';
 import type { SshKeyInfo } from '@/types/git.types';
 
 defineProps<{

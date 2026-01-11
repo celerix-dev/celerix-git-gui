@@ -30,6 +30,14 @@ export function GetBranches(arg1) {
   return window['go']['backend']['App']['GetBranches'](arg1);
 }
 
+export function GetCommitChanges(arg1, arg2) {
+  return window['go']['backend']['App']['GetCommitChanges'](arg1, arg2);
+}
+
+export function GetCommitFileDiff(arg1, arg2, arg3) {
+  return window['go']['backend']['App']['GetCommitFileDiff'](arg1, arg2, arg3);
+}
+
 export function GetCommitHistory(arg1, arg2) {
   return window['go']['backend']['App']['GetCommitHistory'](arg1, arg2);
 }

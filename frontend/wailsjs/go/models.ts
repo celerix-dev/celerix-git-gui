@@ -1,5 +1,19 @@
 export namespace backend {
 	
+	export class CommitFileChange {
+	    path: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitFileChange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.status = source["status"];
+	    }
+	}
 	export class GitCommit {
 	    hash: string;
 	    authorName: string;
