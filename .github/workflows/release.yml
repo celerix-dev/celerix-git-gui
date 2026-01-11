@@ -6,7 +6,9 @@ on:
       - 'v*' # Triggers on any tag starting with 'v', e.g., v1.0.1
 
 jobs:
-  build:
+  release:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
