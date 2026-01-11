@@ -5,10 +5,13 @@ import * as App from '../../../../wailsjs/go/backend/App';
 import FileStatusList from './FileStatusList.vue';
 import CommitSection from './CommitSection.vue';
 import DiffViewer from './DiffViewer.vue';
+import { useAlerts } from '@/composables/useAlerts';
 
 const props = defineProps<{
   repoPath: string;
 }>();
+
+const { showError, showSuccess } = useAlerts();
 
 const unstagedFiles = ref<GitStatusFile[]>([]);
 const stagedFiles = ref<GitStatusFile[]>([]);
@@ -60,13 +63,15 @@ const commitChanges = async (data: { subject: string; description: string; amend
     commitDescription.value = '';
     amend.value = false;
     
+    showSuccess('Changes committed successfully', 'Commit');
+    
     // Refresh status
     await loadStatus();
     selectedFile.value = null;
     diffContent.value = '';
   } catch (err) {
     console.error('Failed to commit:', err);
-    alert('Failed to commit: ' + err);
+    showError('Failed to commit: ' + err);
   } finally {
     loading.value = false;
   }

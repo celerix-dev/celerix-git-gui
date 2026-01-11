@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue';
 import * as App from '../../wailsjs/go/backend/App';
 import type { RepoTab } from '@/types/git.types';
+import { useAlerts } from './useAlerts';
 
 export function useGitActions(
   tabs: Ref<RepoTab[]>,
@@ -10,6 +11,7 @@ export function useGitActions(
   saveState: (recent: { name: string, path: string }[]) => void,
   setActiveTab: (id: string, recent: { name: string, path: string }[]) => void
 ) {
+  const { showError, showSuccess } = useAlerts();
   const showInitModal = ref(false);
   const pendingRepoPath = ref<string | null>(null);
   const pendingRepoName = ref<string | null>(null);
@@ -106,7 +108,7 @@ export function useGitActions(
       addToRecent(name, path);
       saveState(recentRepos.value);
     } catch (err) {
-      alert("Failed to initialize repository: " + err);
+      showError("Failed to initialize repository: " + err);
     }
   };
 
@@ -119,41 +121,43 @@ export function useGitActions(
   const checkoutBranch = async (repoPath: string, branchName: string, isRemote: boolean) => {
     try {
       await App.Checkout(repoPath, branchName, isRemote);
+      showSuccess(`Checked out ${branchName}`, 'Checkout');
     } catch (err) {
       console.error('Failed to checkout branch:', err);
-      alert('Failed to checkout branch: ' + err);
+      showError('Failed to checkout branch: ' + err);
     }
   };
 
   const createBranch = async (repoPath: string, name: string, checkout: boolean) => {
     try {
       await App.CreateBranch(repoPath, name, checkout);
+      showSuccess(`Created branch ${name}`, 'New Branch');
     } catch (err) {
       console.error('Failed to create branch:', err);
-      alert('Failed to create branch: ' + err);
+      showError('Failed to create branch: ' + err);
     }
   };
 
   const createTag = async (repoPath: string, name: string, message: string) => {
     try {
       await App.CreateTag(repoPath, name, message);
+      showSuccess(`Created tag ${name}`, 'New Tag');
     } catch (err) {
       console.error('Failed to create tag:', err);
-      alert('Failed to create tag: ' + err);
+      showError('Failed to create tag: ' + err);
     }
   };
 
   const fetchRepo = async (repoPath: string) => {
     try {
       await App.Fetch(repoPath);
+      showSuccess('Fetch completed successfully', 'Fetch');
     } catch (err: any) {
       console.error('Failed to fetch:', err);
       if (err.toString().includes('SSH key not found')) {
-        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
-          return 'open-settings';
-        }
+        return 'ssh-key-missing';
       } else {
-        alert('Failed to fetch: ' + err);
+        showError('Failed to fetch: ' + err);
       }
     }
   };
@@ -161,14 +165,13 @@ export function useGitActions(
   const pullRepo = async (repoPath: string) => {
     try {
       await App.Pull(repoPath);
+      showSuccess('Pull completed successfully', 'Pull');
     } catch (err: any) {
       console.error('Failed to pull:', err);
       if (err.toString().includes('SSH key not found')) {
-        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
-          return 'open-settings';
-        }
+        return 'ssh-key-missing';
       } else {
-        alert('Failed to pull: ' + err);
+        showError('Failed to pull: ' + err);
       }
     }
   };
@@ -176,14 +179,13 @@ export function useGitActions(
   const pushRepo = async (repoPath: string) => {
     try {
       await App.Push(repoPath);
+      showSuccess('Push completed successfully', 'Push');
     } catch (err: any) {
       console.error('Failed to push:', err);
       if (err.toString().includes('SSH key not found')) {
-        if (confirm('SSH key not found. Would you like to open Git Settings to generate one?')) {
-          return 'open-settings';
-        }
+        return 'ssh-key-missing';
       } else {
-        alert('Failed to push: ' + err);
+        showError('Failed to push: ' + err);
       }
     }
   };

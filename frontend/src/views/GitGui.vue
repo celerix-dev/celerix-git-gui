@@ -13,11 +13,14 @@ import RepoInfoView from "@/components/GitGui/RepoInfoView/RepoInfoView.vue";
 import ChangesView from "@/components/GitGui/ChangesView/ChangesView.vue";
 import CommitView from "@/components/GitGui/CommitView/CommitView.vue";
 import BranchView from "@/components/GitGui/BranchView/BranchView.vue";
+import GlobalAlert from "@/components/Common/GlobalAlert.vue";
+import ConfirmationModal from "@/components/Basic/ConfirmationModal.vue";
 
 import * as App from "../../wailsjs/go/backend/App";
 import { useRepoTabs } from "@/composables/useRepoTabs";
 import { useGitActions } from "@/composables/useGitActions";
 import { useRepoStats } from "@/composables/useRepoStats";
+import { useAlerts } from "@/composables/useAlerts";
 
 const showSettings = ref(false);
 const showBranchModal = ref(false);
@@ -27,6 +30,8 @@ const branchModalFrom = ref('');
 const tagModalFrom = ref('');
 const deleteBranchName = ref('');
 const modalLoading = ref(false);
+
+const showSshErrorModal = ref(false);
 
 const recentRepos = ref<{ name: string, path: string }[]>([]);
 const homeDir = ref<string>('');
@@ -75,6 +80,8 @@ const {
   loadRepoInfo
 } = useRepoStats(activeTab, homeDir);
 
+const { showError } = useAlerts();
+
 const refreshAll = (path: string) => {
   loadRepoInfo(path);
   triggerRefresh();
@@ -115,7 +122,7 @@ const handleDeleteBranch = (data: { branchName: string, deleteRemote: boolean })
       refreshAll(path);
     }).catch(err => {
       console.error('Failed to delete branch:', err);
-      // Maybe show an alert or toast here if available
+      showError('Failed to delete branch: ' + err);
     }).finally(() => {
       modalLoading.value = false;
     });
@@ -197,9 +204,9 @@ onMounted(async () => {
   <div class="git-gui-container h-100 d-flex flex-column">
     <GitStatusBar
         :active-tab="activeTab"
-        @fetch="() => { if (activeTab) { const path = activeTab.path; fetchRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
-        @pull="() => { if (activeTab) { const path = activeTab.path; pullRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
-        @push="() => { if (activeTab) { const path = activeTab.path; pushRepo(path).then((res) => { if(res === 'open-settings') showSettings = true; refreshAll(path); }) } }"
+        @fetch="() => { if (activeTab) { const path = activeTab.path; fetchRepo(path).then((res) => { if (res === 'ssh-key-missing') showSshErrorModal = true; refreshAll(path); }) } }"
+        @pull="() => { if (activeTab) { const path = activeTab.path; pullRepo(path).then((res) => { if (res === 'ssh-key-missing') showSshErrorModal = true; refreshAll(path); }) } }"
+        @push="() => { if (activeTab) { const path = activeTab.path; pushRepo(path).then((res) => { if (res === 'ssh-key-missing') showSshErrorModal = true; refreshAll(path); }) } }"
         class="mb-0 flex-shrink-0"
     />
 
@@ -295,6 +302,17 @@ onMounted(async () => {
       @close="showDeleteBranchModal = false"
       @delete="handleDeleteBranch"
   />
+
+  <ConfirmationModal
+      :show="showSshErrorModal"
+      title="SSH Key Not Found"
+      message="SSH key not found. Would you like to open Git Settings to generate one?"
+      confirm-text="Open Settings"
+      @close="showSshErrorModal = false"
+      @confirm="() => { showSshErrorModal = false; showSettings = true; }"
+  />
+
+  <GlobalAlert />
 </template>
 
 <style scoped>
