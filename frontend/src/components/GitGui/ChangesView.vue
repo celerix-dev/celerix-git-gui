@@ -18,6 +18,21 @@ const commitSubject = ref('');
 const commitDescription = ref('');
 const amend = ref(false);
 
+watch(amend, async (newValue) => {
+  if (newValue) {
+    try {
+      const lastCommits = await App.GetCommitHistory(props.repoPath, 1);
+      if (lastCommits && lastCommits.length > 0) {
+        const lastCommit = lastCommits[0];
+        commitSubject.value = lastCommit.subject;
+        commitDescription.value = lastCommit.body;
+      }
+    } catch (err) {
+      console.error('Failed to load last commit for amend:', err);
+    }
+  }
+});
+
 const emit = defineEmits<{
   (e: 'refresh-stats'): void;
 }>();
@@ -57,12 +72,12 @@ const loadStatus = async () => {
     const status = await App.GetGitStatus(props.repoPath);
     // Sort all status items alphabetically by path before filtering
     status.sort((a, b) => a.path.localeCompare(b.path));
-    
+
     unstagedFiles.value = status.filter(f => !f.is_staged);
     stagedFiles.value = status.filter(f => f.is_staged);
     emit('refresh-stats');
   } catch (err) {
-    console.error('Failed to load status:', err);
+    // console.error('Failed to load status:', err);
     // Clear lists on error to avoid showing stale data from previous repo
     unstagedFiles.value = [];
     stagedFiles.value = [];

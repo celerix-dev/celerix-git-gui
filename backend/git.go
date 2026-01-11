@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"io"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
@@ -19,7 +21,6 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
-	"io"
 )
 
 type GitRemoteBranches struct {
@@ -631,12 +632,25 @@ func (a *App) GetCommitHistory(repoPath string, count int) ([]GitCommit, error) 
 }
 
 func (a *App) Commit(repoPath string, subject string, body string, amend bool) error {
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Committing changes...",
+		Percent: 0,
+	})
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Commit failed: %v", err),
+			Percent: -1,
+		})
 		return err
 	}
 	w, err := r.Worktree()
 	if err != nil {
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Commit failed: %v", err),
+			Percent: -1,
+		})
 		return err
 	}
 
@@ -651,7 +665,20 @@ func (a *App) Commit(repoPath string, subject string, body string, amend bool) e
 	}
 
 	_, err = w.Commit(msg, opts)
-	return err
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+			Status:  fmt.Sprintf("Commit failed: %v", err),
+			Percent: -1,
+		})
+		return err
+	}
+
+	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
+		Status:  "Commit completed",
+		Percent: 100,
+	})
+
+	return nil
 }
 
 func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error {
