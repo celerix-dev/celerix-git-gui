@@ -3,16 +3,14 @@ package backend
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"io"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -21,7 +19,15 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
+	"sync"
 )
+
+var repoMutexes sync.Map
+
+func getRepoMutex(path string) *sync.Mutex {
+	m, _ := repoMutexes.LoadOrStore(path, &sync.Mutex{})
+	return m.(*sync.Mutex)
+}
 
 type GitRemoteBranches struct {
 	Name     string   `json:"name"`
@@ -78,6 +84,10 @@ func (a *App) IsGitRepo(path string) (bool, error) {
 }
 
 func (a *App) GetRepoStats(path string) (*RepoStats, error) {
+	mu := getRepoMutex(path)
+	mu.Lock()
+	defer mu.Unlock()
+
 	// 1. Open the repository
 	r, err := git.PlainOpen(path)
 	if err != nil {
@@ -89,28 +99,10 @@ func (a *App) GetRepoStats(path string) (*RepoStats, error) {
 	}
 
 	indexPath := filepath.Join(path, ".git", "index")
-	f, err := os.Open(indexPath)
-	if err != nil {
-		return nil, err
+	info, err := os.Stat(indexPath)
+	if err == nil {
+		stats.SizeMB = float64(info.Size()) / 1024 / 1024
 	}
-	defer func(f *os.File) {
-		_ = f.Close()
-	}(f)
-
-	// 2. Use go-git's index decoder
-	idx := &index.Index{}
-	decoder := index.NewDecoder(f)
-	if err := decoder.Decode(idx); err != nil {
-		return nil, err
-	}
-
-	// 3. Sum the sizes (this is just reading metadata, no decompression!)
-	var totalBytes int64
-	for _, entry := range idx.Entries {
-		totalBytes += int64(entry.Size)
-	}
-
-	stats.SizeMB = float64(totalBytes) / 1024 / 1024
 
 	// 3. Get Remote URL
 	if remotes, err := r.Remotes(); err == nil && len(remotes) > 0 {
@@ -214,6 +206,10 @@ func (a *App) GetRepoStats(path string) (*RepoStats, error) {
 }
 
 func (a *App) GetRepoReadme(path string) (string, error) {
+	mu := getRepoMutex(path)
+	mu.Lock()
+	defer mu.Unlock()
+
 	readmeFiles := []string{"README.md", "readme.md", "README", "readme"}
 	var content []byte
 
@@ -252,6 +248,10 @@ func (a *App) GetRepoReadme(path string) (string, error) {
 }
 
 func (a *App) GetGitStatus(repoPath string) ([]GitStatusFile, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return nil, err
@@ -267,6 +267,12 @@ func (a *App) GetGitStatus(repoPath string) ([]GitStatusFile, error) {
 
 	var result []GitStatusFile
 	for file, s := range status {
+		// If both Staging and Worktree are Unmodified, it shouldn't really be in the map,
+		// but go-git sometimes includes them.
+		if s.Staging == git.Unmodified && s.Worktree == git.Unmodified {
+			continue
+		}
+
 		// Staged changes
 		if s.Staging != git.Unmodified && s.Staging != git.Untracked {
 			result = append(result, GitStatusFile{
@@ -276,6 +282,7 @@ func (a *App) GetGitStatus(repoPath string) ([]GitStatusFile, error) {
 			})
 		}
 		// Unstaged changes (including untracked)
+		// Important: If a file is both staged and has unstaged changes, we want both entries
 		if s.Worktree != git.Unmodified {
 			result = append(result, GitStatusFile{
 				Path:     file,
@@ -311,6 +318,10 @@ func statusChar(s git.StatusCode) string {
 }
 
 func (a *App) StageFile(repoPath string, filePath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -324,6 +335,10 @@ func (a *App) StageFile(repoPath string, filePath string) error {
 }
 
 func (a *App) StageAll(repoPath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -336,6 +351,10 @@ func (a *App) StageAll(repoPath string) error {
 }
 
 func (a *App) UnstageFile(repoPath string, filePath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -349,10 +368,6 @@ func (a *App) UnstageFile(repoPath string, filePath string) error {
 	head, err := r.Head()
 	if err != nil {
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			// No commits yet, so we probably want to remove from index?
-			// go-git doesn't have a direct "unstage" that works perfectly without HEAD
-			// But we can try to Reset to an empty tree if needed.
-			// Actually w.Remove often deletes the file from worktree too if not careful.
 			return fmt.Errorf("cannot unstage: no HEAD reference found")
 		}
 		return err
@@ -361,10 +376,15 @@ func (a *App) UnstageFile(repoPath string, filePath string) error {
 	return w.Reset(&git.ResetOptions{
 		Commit: head.Hash(),
 		Mode:   git.MixedReset,
+		Files:  []string{filePath},
 	})
 }
 
 func (a *App) UnstageAll(repoPath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -392,6 +412,10 @@ func (a *App) UnstageAll(repoPath string) error {
 }
 
 func (a *App) GetFileDiff(repoPath string, filePath string, staged bool) (string, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return "", err
@@ -515,6 +539,10 @@ func (a *App) getUnifiedDiff(r *git.Repository, headTree *object.Tree, filePath 
 }
 
 func (a *App) GetBranches(repoPath string) ([]string, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return nil, err
@@ -538,6 +566,10 @@ func (a *App) GetBranches(repoPath string) ([]string, error) {
 }
 
 func (a *App) GetCommitHistory(repoPath string, count int) ([]GitCommit, error) {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return nil, err
@@ -632,6 +664,10 @@ func (a *App) GetCommitHistory(repoPath string, count int) ([]GitCommit, error) 
 }
 
 func (a *App) Commit(repoPath string, subject string, body string, amend bool) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	runtime.EventsEmit(a.ctx, "git-progress", GitProgress{
 		Status:  "Committing changes...",
 		Percent: 0,
@@ -682,6 +718,10 @@ func (a *App) Commit(repoPath string, subject string, body string, amend bool) e
 }
 
 func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -732,6 +772,10 @@ func (a *App) Checkout(repoPath string, branchName string, isRemote bool) error 
 }
 
 func (a *App) CreateBranch(repoPath string, name string, checkout bool) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -765,6 +809,10 @@ func (a *App) CreateBranch(repoPath string, name string, checkout bool) error {
 }
 
 func (a *App) CreateTag(repoPath string, name string, message string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -858,6 +906,10 @@ func (p *gitProgressProxy) Write(data []byte) (n int, err error) {
 }
 
 func (a *App) Fetch(repoPath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -899,6 +951,10 @@ func (a *App) Fetch(repoPath string) error {
 }
 
 func (a *App) Pull(repoPath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
@@ -945,6 +1001,10 @@ func (a *App) Pull(repoPath string) error {
 }
 
 func (a *App) Push(repoPath string) error {
+	mu := getRepoMutex(repoPath)
+	mu.Lock()
+	defer mu.Unlock()
+
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return err
