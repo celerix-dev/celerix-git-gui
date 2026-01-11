@@ -99,10 +99,10 @@ watch(() => props.refreshCounter, () => {
                       INFO
                   </button>
                   <button 
-                      :class="['btn btn-sm px-3 py-2 border-0 rounded-0', { 'active-tab border-bottom border-primary border-2 text-primary': activeDetailTab === 'changes' }]"
+                      :class="[{'disabled': !commitChanges || commitChanges.length === 0},'btn btn-sm px-3 py-2 border-0 rounded-0', { 'active-tab border-bottom border-primary border-2 text-primary': activeDetailTab === 'changes' }]"
                       @click="activeDetailTab = 'changes'"
                   >
-                      CHANGES ({{ commitChanges.length }})
+                    CHANGES <span v-if="commitChanges && commitChanges.length > 0">({{ commitChanges.length }})</span>
                   </button>
               </div>
               <button class="btn btn-sm btn-link text-muted p-0 me-2" @click="toggleMaximize" :title="isMaximized ? 'Restore' : 'Maximize'">
@@ -121,7 +121,7 @@ watch(() => props.refreshCounter, () => {
                 ref="changesRef"
                 :repo-path="repoPath"
                 :commit-hash="selectedCommit.hash"
-                :changes="commitChanges"
+                :changes="commitChanges || []"
                 :loading="loadingChanges"
               />
           </div>

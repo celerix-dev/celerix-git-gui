@@ -39,7 +39,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="commit-detail-changes h-100 overflow-auto">
+  <div class="commit-detail-changes h-100 overflow-auto" v-if="changes.length > 0">
     <div v-if="loading" class="text-center py-4 text-muted">
         <div class="spinner-border spinner-border-sm me-2" role="status"></div>
         Loading changes...
